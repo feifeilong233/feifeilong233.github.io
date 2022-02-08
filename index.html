@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>图形学-太阳系漫游demo</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      /* 隐藏body窗口区域滚动条 */
+    }
+  </style>
+  <!--引入three.js三维引擎-->
+  <script src="./three.js"></script>
+  <!-- 引入threejs扩展控件OrbitControls.js -->
+  <script src="./OrbitControls.js"></script>
+  <!-- 星体的参数数据 -->
+  <script src="./data.js"></script>
+  <!-- 创建星体的相关函数 -->
+  <script src="./fun.js"></script>
+</head>
+
+<body>
+  <div id="tag" class="" style="width:640px;position:absolute;bottom:30px;background:rgba(250,0,0,0)">
+    <div id="ui" style="display:inline-block;width:48px;height:48px;margin-left:20px;">
+      <div class="" style="position:relative;">
+        <span id="cir" style="display:block;width:44px;height:44px;border-radius:22px;
+          position:absolute;left:2px;top:2px;
+          visibility:hidden;"></span>
+        <img id="img" src="./UI/按钮/太阳.png" alt="" style="display:block;width:48px;position:absolute;left:0px;top:0px;">
+        <span style="display:block;position:absolute;
+        top:50px;
+        color:#00aaaa;">太阳</span>
+      </div>
+    </div>
+  </div>
+  <div style="position:absolute;top:20px;left:20px;">
+    <button type="button" name="button" onclick="saveFile()">下载</button>
+  </div>
+  <script>
+    /**
+     * 创建场景对象
+     */
+    var scene = new THREE.Scene();
+    var texLoader = new THREE.TextureLoader();
+    var intersectsArr = []; //保存所有需要射线拾取的星体对象
+    //创建太阳系行星和轨迹
+    let Data = data()
+    var sun = createPlanetMesh(Data.sun.R, Data.sun.URL, Data.sun.color);
+    scene.add(sun)
+    intersectsArr.push(sun)
+    sun.name = Data.sun.name; //设置name属性
+    var planetGroup = new THREE.Group();
+    scene.add(planetGroup);
+    Data.planet.forEach(function(obj) {
+      var planet = null;
+      if (obj.ring) {
+        planet = createringPlanetMesh(obj.sphere.R, obj.sphere.URL, obj.ring.r, obj.ring.R, obj.ring.URL, obj.color)
+      } else {
+        planet = createPlanetMesh(obj.R, obj.URL, obj.color);
+      }
+      planet.name = obj.name; //设置行星属性名
+      planet.revolutionR = obj.revolutionR;
+      planet.angle = 2 * Math.PI * Math.random();
+      planetGroup.add(planet);
+      var line = circle(obj.revolutionR);
+      scene.add(line);
+      intersectsArr.push(planet) //插入到数组中，用于射线拾取计算
+
+    })
+    /**
+     * 相机设置
+     */
+    var width = window.innerWidth; //窗口宽度
+    var height = window.innerHeight; //窗口高度
+    var k = width / height; //窗口宽高比
+    //可以根据最外围的海王星公转半径100 * 5设置改参数
+    var s = 360; //s参数影响相机渲染的上下左右范围
+    //创建相机对象
+    //注意相机参数6远裁界面可以包含全部星体在内
+    var camera = new THREE.OrthographicCamera(-s * k, s * k, s, -s, 1, 1500);
+    //据最外围的海王星公转半径100 * 5设置相机位置
+    //相机如果位于行星轨迹内部，场景中部分星体会被剪裁
+    camera.position.set(692, 526, 564); //设置相机位置
+    camera.lookAt(scene.position); //设置相机方向(指向的场景对象)
+    /**
+     * 光源设置
+     */
+    //点光源
+    var point = new THREE.PointLight(0xffffff);
+    point.position.set(400, 200, 300); //点光源位置
+    scene.add(point); //点光源添加到场景中
+
+    //环境光
+    var ambient = new THREE.AmbientLight(0x444444);
+    scene.add(ambient);
+    /**
+     * 创建渲染器对象
+     */
+    var renderer = new THREE.WebGLRenderer({
+      preserveDrawingBuffer: true,
+      antialias: true
+    });
+    renderer.setSize(width, height);
+    renderer.setClearColor(0x101010, 1); //设置背景颜色
+    document.body.appendChild(renderer.domElement); //body元素中插入canvas对象
+    var chooseMesh = null;
+
+    var div = document.createElement("div");
+    div.style.position = 'absolute';
+    div.style.display = 'block';
+    document.body.appendChild(div);
+    var img = document.createElement("img");
+    //创建的图片元素插入到div元素中
+    div.appendChild(img)
+
+    function render() {
+      sun.rotation.y += 0.01;
+      renderer.render(scene, camera); //执行渲染操作
+      planetGroup.children.forEach(function(obj) {
+        obj.rotation.y += 0.01;
+        obj.angle += 0.005 / obj.revolutionR * 400;
+        obj.position.set(obj.revolutionR * Math.sin(obj.angle), 0, obj.revolutionR * Math.cos(obj.angle));
+      })
+      requestAnimationFrame(render);
+      //console.log(camera.position);
+      if (chooseMesh) {
+        var worldVector = new THREE.Vector3();
+        //获取选中Mesh的世界坐标
+        chooseMesh.getWorldPosition(worldVector);
+        var standardVector = worldVector.project(camera); //世界坐标转标准设备坐标
+        var a = window.innerWidth / 2;
+        var b = window.innerHeight / 2;
+        var x = Math.round(standardVector.x * a + a); //标准设备坐标转屏幕坐标
+        var y = Math.round(-standardVector.y * b + b); //标准设备坐标转屏幕坐标
+
+        div.style.left = x + 'px';
+        div.style.top = y - 280 + 'px';
+      }
+    }
+    render();
+    var controls = new THREE.OrbitControls(camera, renderer.domElement); //创建控件对象
+
+
+    function choose(event) {
+      img.src = '';
+      chooseMesh = null;
+      var Sx = event.clientX;
+      var Sy = event.clientY;
+      //屏幕坐标转标准设备坐标
+      var x = (Sx / window.innerWidth) * 2 - 1;
+      var y = -(Sy / window.innerHeight) * 2 + 1;
+
+      var raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
+      //环行星是group包含两个mesh子对象，intersectObjects方法第二个参数设置为true，可以检测子对象
+      var intersects = raycaster.intersectObjects(intersectsArr, true);
+      if (intersects.length > 0) {
+        //环行星好像无法选中
+        console.log(intersects[0].object.name);
+        //img.src = './UI/标签/' + intersects[0].object.name + '.png';
+        //chooseMesh = intersects[0].object
+        //点击选中Mesh对应的父节点的name属性是星体的名字
+        img.src = './UI/标签/' + intersects[0].object.parent.name + '.png';
+        chooseMesh = intersects[0].object.parent
+      }
+    }
+    addEventListener('click', choose); //监听窗口鼠标单击事件
+
+    var tag = document.getElementById('tag')
+    tag.style.left = (window.innerWidth - tag.clientWidth) / 2 + 'px';
+    //UI交互按钮
+    var ui = document.getElementById('ui')
+    ui.name = '太阳'
+    var uiArr = []
+    uiArr.push(ui)
+    Data.planet.forEach(function(obj) {
+      var newui = ui.cloneNode(true);
+      var img = newui.children[0].children[1]
+      img.src = './UI/按钮/' + obj.name + '.png'
+      document.getElementById('tag').appendChild(newui)
+      newui.name = obj.name; //给按钮命名，和行星名称对应
+      uiArr.push(newui)
+    })
+    var colorArr=['#E1950E','#3D95DF',
+    '#B56216','#73A6DD','#C78A31','#B18F69',
+    '#C8A15C','#5BB6FB','#0073FC']
+    var textArr=['太阳','水星',
+    '金星','地球','火星','木星',
+    '土星','天王星','海王星']
+    uiArr.forEach((dom, i) => {
+      var cir = dom.children[0].children[0]
+      cir.style.boxShadow = "0px 0px 20px 3px "+colorArr[i];
+      var text = dom.children[0].children[2]
+      //设置星体名称
+      text.innerText = textArr[i]
+      if (textArr[i].length==2) { //两个汉字的名称，适当平移
+          text.style.left='7px';
+      }
+    })
+    //所有UI按钮设置鼠标件事，点击选中设置光圈，再次点击取消选中
+    var chooseUI = null
+    uiArr.forEach((dom, i) => {
+      dom.addEventListener("click", function(event) {
+        if (chooseUI) {
+          chooseUI.style.visibility = 'hidden'
+        }
+        event.stopPropagation(); //不影响three.js3D场景的鼠标事件
+        //场景中查找名为dom.name的星体
+        chooseMesh = scene.getObjectByName(dom.name);
+        //加载按钮对应的星体标签
+        img.src = './UI/标签/' + dom.name + '.png';
+        var cir = dom.children[0].children[0]
+        chooseUI = cir
+        cir.style.visibility = 'visible'
+      })
+    });
+    addEventListener('click', function() {
+      if (chooseUI) {
+        chooseUI.style.visibility = 'hidden'
+      }
+    });
+    //保存webgl内容
+    function saveFile() {
+      //创建一个超链接元素，用来下载保存数据的文件
+      var link = document.createElement('a');
+      //通过超链接herf属性，设置要保存到文件中的数据
+      var canvas = renderer.domElement; //获取canvas对象
+      link.href = canvas.toDataURL("image/png");
+      link.download = 'threejs.png'; //下载文件名
+      link.click(); //js代码触发超链接元素a的鼠标点击事件，开始下载文件到本地
+    }
+  </script>
+</body>
+
+</html>
